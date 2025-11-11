@@ -67,6 +67,56 @@ Open `frontend/index.html` in a modern browser while the Flask server runs (or s
 - Location selector (preset cities or manual lat/lon/alt/tz), automatic timezone handling, and Vietnamese UI copy
 - PV panel recommendation card: optimal heading, tilt angle, and estimated annual energy for the chosen year/location
 
+## Lý thuyết và thuật toán
+
+### 1. Tính toán quỹ đạo Mặt Trời (Backend)
+
+- **Đầu vào:** `SiteParameters` (vĩ độ, kinh độ, cao độ, múi giờ), ngày/giờ yêu cầu, bước lấy mẫu.
+- **Thuật toán:** sử dụng `pvlib.solarposition.spa_python` (Solar Position Algorithm - SPA) để tính các góc thiên văn (elevation, azimuth, zenith) theo tiêu chuẩn NOAA với sai số ~0.01°.  
+  - SPA xử lý hiệu chỉnh khí quyển, độ lệch trục, phương trình thời gian và tự động nhận múi giờ.
+  - Hàm `get_sun_position` trả về cấu trúc `SunPosition` gồm góc cao (elevation), góc phương (azimuth), góc thiên đỉnh (zenith) và cờ `is_daytime`.
+- **Quỹ đạo cả ngày:** `get_sun_path` tạo dãy thời gian `DatetimeIndex`, lặp SPA và gom thành mảng `{time, elevation, azimuth}`.  
+  - Bình minh/hoàng hôn/solar noon lấy từ `solarposition.sun_rise_set_transit_spa`, đảm bảo đồng nhất với SPA.
+- **Múi giờ:** mọi thời gian đều được chuẩn hóa qua `pytz.timezone(site.timezone)`, giúp kết quả chính xác cho mọi địa điểm người dùng nhập.
+
+### 2. Khuyến nghị hướng đặt tấm pin
+
+- **Bài toán:** tìm hướng (azimuth) và góc nghiêng (tilt) cố định cho tấm PV tối đa hóa tổng bức xạ trong năm.
+- **Dữ liệu:** mô hình bầu trời quang `pvlib.location.Location.get_clearsky` (Ineichen) → DNI/GHI/DHI.  
+  - Tính năng lượng tới mặt phẳng thông qua `pvlib.irradiance.get_total_irradiance` (mô hình Hay-Davies).
+- **Chiến lược:** quét lưới các giá trị tilt (0…`tilt_max`, bước `tilt_step`) và azimuth (0…360°, bước `azimuth_step`).  
+  - Tại mỗi cặp, tích lũy `poa_global` trong năm → chọn giá trị cao nhất.  
+  - Trả về `OrientationResult` gồm tilt tối ưu, azimuth tối ưu, năng lượng ước tính (Wh/m²), kèm nhãn hướng tiếng Việt (Bắc, Đông, …).
+- **Sử dụng:**  
+  - API `/api/optimal-orientation` nhận thêm tham số `lat/lon/alt/tz` và tham số quét (tilt_step, tilt_max, azimuth_step, freq).  
+  - Frontend hiển thị kết quả và mô tả bằng tiếng Việt.
+
+### 3. Hiển thị & mô phỏng (Frontend)
+
+- **Nội suy thời gian:** danh sách mẫu (elevation, azimuth) theo phút; khi người dùng kéo thanh trượt, hệ thống nội suy tuyến tính elevation và dùng hàm `lerpAngleDeg` để nội suy góc phương có chu kỳ 360°.  
+- **Canvas 2D:** `computeSunCanvasPosition` chuyển đổi góc thiên văn thành tọa độ:  
+  - `x = center + r * cos(azimuth) * cos(elevation)`  
+  - `y = center - r * sin(azimuth) * cos(elevation)`  
+  - Bảo đảm quỹ đạo từ Đông sang Tây, Mặt Trời biến mất khi `y` vượt đường chân trời.
+- **Vòng lặp animation:** requestAnimationFrame 60 fps, tăng/giảm thời gian nội bộ theo tốc độ người dùng chọn, đồng bộ hiển thị và cập nhật bảng thông tin.
+- **Quản lý vị trí:** preset cho các thành phố phổ biến; người dùng có thể nhập tọa độ tay → frontend gửi `lat/lon/alt/tz` cho backend, đồng thời cập nhật năm cần tối ưu.
+
+### 4. API và dữ liệu trả về
+
+- `/api/sun-position`: trả về góc tại thời điểm hiện tại/ISO, kèm metadata địa điểm/múi giờ.  
+- `/api/sun-path`: trả về đường đi cả ngày (`path`, `sunrise`, `sunset`, `solar_noon`, `location`).  
+- `/api/optimal-orientation`: trả về hướng đặt tối ưu, góc nghiêng, năng lượng ước tính, nhãn hướng và thông tin địa điểm.
+- Mọi endpoint cho phép override bằng tham số truy vấn (lat, lon, alt|altitude, tz, name) để phân tích nhiều khu vực.
+
+### 5. Kiểm thử & đảm bảo chất lượng
+
+- `pytest` kiểm chứng:  
+  - Góc mặt trời vào các thời điểm chuẩn (so với NOAA ±0.2°).  
+  - Tổng số mẫu quỹ đạo, bình minh/hoàng hôn, solar noon.  
+  - Việc truyền tọa độ tùy chỉnh không phá vỡ dữ liệu trả về.  
+  - Thuật toán tối ưu luôn trả tilt/azimuth trong phạm vi mong đợi.
+- Giao diện cung cấp cảnh báo và ghi log lỗi nếu API không phản hồi, đảm bảo người dùng nắm tình trạng tính toán.
+
 ## Testing
 
 Run unit tests with PyTest:
