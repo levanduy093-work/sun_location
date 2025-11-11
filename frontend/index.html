@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trình mô phỏng vị trí Mặt Trời</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <h1>Trình mô phỏng vị trí Mặt Trời</h1>
+      <p class="app-subtitle">Theo dõi quỹ đạo Mặt Trời và nhận khuyến nghị đặt tấm pin phù hợp với khu vực của bạn.</p>
+    </header>
+
+    <div class="control-panels">
+      <section class="panel panel-location">
+        <div class="panel-header">
+          <h2>Vị trí quan sát</h2>
+          <span class="active-location" id="activeLocationLabel">TP. Hồ Chí Minh, Việt Nam</span>
+        </div>
+        <div class="control-row">
+          <label class="control-group">
+            <span>Chọn nhanh</span>
+            <select id="locationPreset">
+              <option value="custom">Tự nhập thủ công</option>
+              <option value="hcm">TP. Hồ Chí Minh, Việt Nam</option>
+              <option value="hanoi">Hà Nội, Việt Nam</option>
+              <option value="danang">Đà Nẵng, Việt Nam</option>
+              <option value="tokyo">Tokyo, Nhật Bản</option>
+              <option value="sydney">Sydney, Úc</option>
+            </select>
+          </label>
+          <label class="control-group">
+            <span>Năm tính toán tối ưu</span>
+            <input type="number" id="orientationYear" min="2000" max="2100" />
+          </label>
+        </div>
+        <div class="location-grid">
+          <label class="control-group">
+            <span>Vĩ độ (°)</span>
+            <input type="number" step="0.0001" id="latitudeInput" />
+          </label>
+          <label class="control-group">
+            <span>Kinh độ (°)</span>
+            <input type="number" step="0.0001" id="longitudeInput" />
+          </label>
+          <label class="control-group">
+            <span>Độ cao (m)</span>
+            <input type="number" step="1" id="altitudeInput" />
+          </label>
+          <label class="control-group">
+            <span>Múi giờ</span>
+            <input type="text" id="timezoneInput" placeholder="Asia/Ho_Chi_Minh" />
+          </label>
+        </div>
+        <div class="location-actions">
+          <button id="applyLocationButton">Cập nhật vị trí &amp; tính toán</button>
+        </div>
+      </section>
+
+      <section class="panel panel-time">
+        <h2>Thời gian mô phỏng</h2>
+        <div class="control-row">
+          <label class="control-group" for="datePicker">
+            <span>Ngày quan sát</span>
+            <input type="date" id="datePicker" />
+          </label>
+        </div>
+        <div class="time-summary">
+          <div class="info-item">
+            <span>Giờ mô phỏng</span>
+            <strong id="currentTime">--:--:--</strong>
+          </div>
+          <div class="info-item">
+            <span>Múi giờ đang dùng</span>
+            <strong id="timezoneReadout">--</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <main class="app-main">
+      <div class="canvas-wrapper">
+        <canvas id="solarCanvas" width="800" height="600"></canvas>
+        <div class="cardinal-label north">B</div>
+        <div class="cardinal-label south">N</div>
+        <div class="cardinal-label east">Đ</div>
+        <div class="cardinal-label west">T</div>
+      </div>
+      <section class="info-panel">
+        <div class="info-section">
+          <h2>Thông số Mặt Trời</h2>
+          <div class="readout-grid">
+            <div class="info-item"><span>Góc cao (Elevation)</span><strong id="elevationReadout">--.--°</strong></div>
+            <div class="info-item"><span>Góc phương (Azimuth)</span><strong id="azimuthReadout">--.--°</strong></div>
+            <div class="info-item"><span>Góc thiên đỉnh (Zenith)</span><strong id="zenithReadout">--.--°</strong></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <h2>Thời điểm quan trọng</h2>
+          <div class="readout-grid">
+            <div class="info-item"><span>Bình minh</span><strong id="sunriseReadout">--:--</strong></div>
+            <div class="info-item"><span>Hoàng hôn</span><strong id="sunsetReadout">--:--</strong></div>
+            <div class="info-item"><span>Giữa trưa Mặt Trời</span><strong id="solarNoonReadout">--:--</strong></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <h2>Khuyến nghị đặt tấm pin</h2>
+          <div class="readout-grid orientation-grid">
+            <div class="info-item"><span>Hướng nên đặt</span><strong id="orientationDirection">--</strong></div>
+            <div class="info-item"><span>Góc nghiêng đề xuất</span><strong id="orientationTilt">--°</strong></div>
+            <div class="info-item"><span>Góc hướng (Azimuth)</span><strong id="orientationAzimuth">--°</strong></div>
+            <div class="info-item"><span>Năng lượng thu được (ước tính)</span><strong id="orientationEnergy">-- kWh/m²</strong></div>
+          </div>
+          <p class="orientation-note" id="orientationSummary">Khuyến nghị dựa trên mô hình bầu trời quang (clearsky) cho toàn bộ năm đã chọn.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <div class="control-bar">
+        <div class="button-group">
+          <button id="resetButton" title="Đặt lại về thời gian hiện tại">Đưa về hiện tại</button>
+          <button id="playPauseButton" title="Bắt đầu hoặc tạm dừng mô phỏng">Phát</button>
+        </div>
+        <div class="speed-control">
+          <span>Tốc độ:</span>
+          <button data-speed="1">1x</button>
+          <button data-speed="10">10x</button>
+          <button data-speed="60">60x</button>
+          <button data-speed="300">300x</button>
+        </div>
+      </div>
+      <div class="slider-row">
+        <span>00:00</span>
+        <input type="range" id="timeSlider" min="0" max="1439" value="0" />
+        <span>23:59</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/js/api.js" type="module"></script>
+  <script src="/js/canvas.js" type="module"></script>
+  <script src="/js/animation.js" type="module"></script>
+</body>
+</html>
