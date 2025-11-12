@@ -219,6 +219,7 @@ function renderScene() {
     elevation: position?.elevation,
     azimuth: position?.azimuth,
     isDaytime: position?.isDaytime ?? false,
+    pathSamples: pathData?.samples,
   });
 }
 

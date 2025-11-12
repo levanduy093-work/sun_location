@@ -6,6 +6,12 @@ const CANVAS_CONFIG = {
   radius: 250,
 };
 
+const SUN_PATH_STYLE = {
+  heightBoostScale: 0.45,
+  horizontalCurveFactor: 0.3,
+  pathSubdivisions: 6,
+};
+
 const COLORS = {
   daySky: "#87CEEB",
   nightSky: "#191970",
@@ -20,13 +26,39 @@ const COLORS = {
   grid: "rgba(255,255,255,0.25)",
 };
 
+function clamp01(value) {
+  return Math.min(Math.max(value, 0), 1);
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpAngleDeg(a, b, t) {
+  const delta = ((b - a + 540) % 360) - 180;
+  return (a + delta * t + 360) % 360;
+}
+
 export function computeSunCanvasPosition(elevationDeg, azimuthDeg, customCenter) {
   const { centerX, centerY, radius } = customCenter ?? CANVAS_CONFIG;
   const elevationRad = (elevationDeg * Math.PI) / 180;
   const azimuthRad = ((azimuthDeg - 90) * Math.PI) / 180;
 
-  const x = centerX + radius * Math.cos(azimuthRad) * Math.cos(elevationRad);
-  const y = centerY - radius * Math.sin(azimuthRad) * Math.cos(elevationRad);
+  const baseCosElevation = Math.cos(elevationRad);
+  const baseX = centerX + radius * Math.cos(azimuthRad) * baseCosElevation;
+  const baseY = centerY - radius * Math.sin(azimuthRad) * baseCosElevation;
+
+  const elevationFactor = clamp01(Math.sin(elevationRad));
+  if (elevationFactor <= 0) {
+    return { x: baseX, y: baseY };
+  }
+
+  const horizontalScale = 1 - SUN_PATH_STYLE.horizontalCurveFactor * elevationFactor;
+  const heightBoost =
+    radius * SUN_PATH_STYLE.heightBoostScale * Math.pow(elevationFactor, 1.25);
+
+  const x = centerX + (baseX - centerX) * horizontalScale;
+  const y = baseY - heightBoost;
   return { x, y };
 }
 
@@ -103,21 +135,60 @@ export class SolarCanvas {
     this.ctx.restore();
   }
 
-  drawSunPath() {
+  drawSunPath(samples) {
     const { centerX, centerY, radius } = CANVAS_CONFIG;
     this.ctx.save();
     this.ctx.strokeStyle = COLORS.path;
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([10, 8]);
-    this.ctx.beginPath();
-    this.ctx.arc(centerX, centerY, radius, 0, Math.PI, false);
-    this.ctx.stroke();
+
+    let drewPath = false;
+
+    if (samples?.length >= 2) {
+      this.ctx.beginPath();
+      let started = false;
+
+      for (let i = 0; i < samples.length - 1; i += 1) {
+        const current = samples[i];
+        const next = samples[i + 1];
+        for (let step = 0; step <= SUN_PATH_STYLE.pathSubdivisions; step += 1) {
+          const t = step / SUN_PATH_STYLE.pathSubdivisions;
+          const elevation = lerp(current.elevation, next.elevation, t);
+          const azimuth = lerpAngleDeg(current.azimuth, next.azimuth, t);
+          if (elevation <= 0) {
+            continue;
+          }
+          const { x, y } = computeSunCanvasPosition(elevation, azimuth);
+          if (y > centerY) {
+            continue;
+          }
+          if (!started) {
+            this.ctx.moveTo(x, y);
+            started = true;
+          } else {
+            this.ctx.lineTo(x, y);
+          }
+        }
+      }
+
+      if (started) {
+        this.ctx.stroke();
+        drewPath = true;
+      }
+    }
+
+    if (!drewPath) {
+      this.ctx.beginPath();
+      this.ctx.arc(centerX, centerY, radius, 0, Math.PI, false);
+      this.ctx.stroke();
+    }
     this.ctx.restore();
   }
 
   drawSun(elevationDeg, azimuthDeg) {
+    const { centerY } = CANVAS_CONFIG;
     const { x, y } = computeSunCanvasPosition(elevationDeg, azimuthDeg);
-    if (y > CANVAS_CONFIG.centerY) {
+    if (y > centerY) {
       return; // below horizon
     }
 
@@ -158,9 +229,9 @@ export class SolarCanvas {
     this.ctx.restore();
   }
 
-  render({ elevation, azimuth, isDaytime }) {
+  render({ elevation, azimuth, isDaytime, pathSamples }) {
     this.clear(isDaytime);
-    this.drawSunPath();
+    this.drawSunPath(pathSamples);
     this.drawCompassLines();
     this.drawHouse(isDaytime);
 
